@@ -57,7 +57,8 @@ def ps_handler(name):
     cmd += '--value="%s" ' % value
     cmd += '--type="string" '
     cmd += '--slope=zero '
-    cmd += '--dmax=120 '
+    cmd += '--tmax=10 '
+    cmd += '--dmax=10 '
     os.system(cmd)
     i += 1
 
