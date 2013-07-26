@@ -26,23 +26,23 @@ def get_user_mapping():
     
 def create_process_list():
   processes = []
-  stdout = commands.getoutput('ps axo pid,uid,pcpu,pmem,size,vsize,share,comm')
-  lines = stdout.splitlines()
+  stdout = commands.getoutput('ps axo pid,uid,pcpu,pmem,vsize,cmd')
+  ps_lines = stdout.splitlines()
   userid_blacklist = get_user_blacklist()
   user_mapping = get_user_mapping()
-  for line in lines[1:]:
-    fields = line.split()
-    if ('<defunct>' not in line) and (fields[1] not in userid_blacklist):
+  for ps in ps_lines[1:]:
+    ps_fields = ps.split()
+    if ('<defunct>' not in ps) and (ps_fields[1] not in userid_blacklist):
       p = {}
-      p['pid'] = fields[0]
-      p['user'] = user_mapping[fields[1]]
-      p['pcpu'] = fields[2]
-      p['pmem'] = fields[3]
-      p['size'] = 'N/A'
-      p['vsize'] = fields[5]
-      p['share'] = 'N/A'
-      p['cmd'] = fields[7] 
-      p['data'] = 'N/A'
+      p['pid'] = ps_fields[0]
+      p['user'] = user_mapping[ps_fields[1]]
+      p['pcpu'] = ps_fields[2]
+      p['pmem'] = ps_fields[3]
+      p['vsize'] = ps_fields[4]
+      p['cmd'] = ps_fields[5]
+      #p['cmd'] = " ".join(ps_fields[5:])
+      p['vsizepeak'] = commands.getoutput('cat /proc/%s/status | tr \\\\0 \\\\n | grep VmPeak | grep -oE "[[:digit:]]{1,}"' % ps_fields[0])
+      p['llid'] = commands.getoutput('cat /proc/%s/environ | tr \\\\0 \\\\n | grep LOADL_STEP_ID | cut -d= -f2' % ps_fields[0])
       processes.append(p)
   return processes
 
@@ -50,8 +50,8 @@ def ps_handler(name):
   i = 0
   processes = create_process_list()
   for p in processes:
-    value = "pid=%s, cmd=%s, user=%s, %%cpu=%s, %%mem=%s, size=%s, data=%s, shared=%s, vm=%s" % (
-        p['pid'], p['cmd'], p['user'], p['pcpu'], p['pmem'], p['size'], p['data'], p['share'],p['vsize'])
+    value = "pid=%s, llid=%s, cmd=%s, user=%s, %%cpu=%s, %%mem=%s, vm=%s, vmpeak=%s" % (
+        p['pid'], p['llid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
     cmd = 'gmetric '
     cmd += '--name="ps-%d" ' % i
     cmd += '--value="%s" ' % value
@@ -88,9 +88,10 @@ def metric_cleanup():
  
 # This code is for debugging and unit testing
 if __name__ == '__main__':
-  metric_init(None)
-  for d in descriptors:
-    v = d['call_back'](d['name'])
-    print 'value for %s is %s' % (d['name'], v)
+  print create_process_list()
+  #metric_init(None)
+  #for d in descriptors:
+  #  v = d['call_back'](d['name'])
+  #  print 'value for %s is %s' % (d['name'], v)
 
 
