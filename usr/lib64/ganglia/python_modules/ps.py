@@ -1,5 +1,8 @@
 import os
 import commands
+from operator import itemgetter
+
+max_processes = 60
 
 # all users listed in /etc/passwd are to be excluded
 def get_user_blacklist():
@@ -25,11 +28,13 @@ def get_user_mapping():
   return mapping
     
 def create_process_list():
-  processes = []
+  global max_processes
+  processes = [{} for n in range(max_processes)]
   stdout = commands.getoutput('ps axo pid,uid,pcpu,pmem,vsize,cmd')
   ps_lines = stdout.splitlines()
   userid_blacklist = get_user_blacklist()
   user_mapping = get_user_mapping()
+  count = 0
   for ps in ps_lines[1:]:
     ps_fields = ps.split()
     if ('<defunct>' not in ps) and (ps_fields[1] not in userid_blacklist):
@@ -40,30 +45,34 @@ def create_process_list():
       p['pmem'] = ps_fields[3]
       p['vsize'] = ps_fields[4]
       p['cmd'] = ps_fields[5]
-      #p['cmd'] = " ".join(ps_fields[5:])
       p['vsizepeak'] = commands.getoutput('cat /proc/%s/status | tr \\\\0 \\\\n | grep VmPeak | grep -oE "[[:digit:]]{1,}"' % ps_fields[0])
-      p['llid'] = commands.getoutput('cat /proc/%s/environ | tr \\\\0 \\\\n | grep LOADL_STEP_ID | cut -d= -f2' % ps_fields[0])
-      processes.append(p)
-  return processes
+      if 'No such file or' in p['vsizepeak']:
+        p['vsizepeak'] = 0
+      processes[count] = p
+      count += 1
+      if count >= (max_processes-1):
+        break
+  return processes 
 
 def ps_handler(name):
-  i = 0
+  global max_processes
   processes = create_process_list()
+  i = 0
   for p in processes:
-    value = "pid=%s, llid=%s, cmd=%s, user=%s, %%cpu=%s, %%mem=%s, vm=%s, vmpeak=%s" % (
-        p['pid'], p['llid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
+    value = ''
+    if p:
+      value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
+      value = value.strip().strip(',')
     cmd = 'gmetric '
-    cmd += '--name="ps-%d" ' % i
+    cmd += '--name="ps-%d" ' % i 
     cmd += '--value="%s" ' % value
     cmd += '--type="string" '
     cmd += '--slope=zero '
-    cmd += '--tmax=10 '
-    cmd += '--dmax=10 '
+    cmd += '--tmax=0 '
+    cmd += '--dmax=0 '
     os.system(cmd)
     i += 1
-
   return ''
-
 
 def metric_init(params):
   global descriptors
@@ -71,7 +80,7 @@ def metric_init(params):
   d = {
     'name': 'ps',
     'call_back': ps_handler,
-    'time_max': 60,
+    'time_max': 0,
     'value_type': 'string',
     'units': '',
     'slope': 'zero',
