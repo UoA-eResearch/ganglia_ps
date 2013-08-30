@@ -1,6 +1,5 @@
 import os
 import commands
-from operator import itemgetter
 
 max_processes = 60
 
@@ -28,13 +27,11 @@ def get_user_mapping():
   return mapping
     
 def create_process_list():
-  global max_processes
-  processes = [{} for n in range(max_processes)]
+  processes = []
   stdout = commands.getoutput('ps axo pid,uid,pcpu,pmem,vsize,cmd')
   ps_lines = stdout.splitlines()
   userid_blacklist = get_user_blacklist()
   user_mapping = get_user_mapping()
-  count = 0
   for ps in ps_lines[1:]:
     ps_fields = ps.split()
     if ('<defunct>' not in ps) and (ps_fields[1] not in userid_blacklist):
@@ -48,17 +45,18 @@ def create_process_list():
       p['vsizepeak'] = commands.getoutput('cat /proc/%s/status | tr \\\\0 \\\\n | grep VmPeak | grep -oE "[[:digit:]]{1,}"' % ps_fields[0])
       if 'No such file or' in p['vsizepeak']:
         p['vsizepeak'] = 0
-      processes[count] = p
-      count += 1
-      if count >= (max_processes-1):
-        break
+      processes.append(p)
   return processes 
 
 def ps_handler(name):
   global max_processes
-  processes = create_process_list()
+  processes = sorted(create_process_list(),key=lambda k: float(k['pcpu']), reverse=True)
+  for i in range(len(processes),(max_processes)):
+    processes.append({})
   i = 0
   for p in processes:
+    if i >= max_processes:
+      break;
     value = ''
     if p:
       value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
@@ -97,7 +95,8 @@ def metric_cleanup():
  
 # This code is for debugging and unit testing
 if __name__ == '__main__':
-  print create_process_list()
+  processes = sorted(create_process_list(),key=lambda k: float(k['pcpu']),reverse=True)
+  print processes
   #metric_init(None)
   #for d in descriptors:
   #  v = d['call_back'](d['name'])
