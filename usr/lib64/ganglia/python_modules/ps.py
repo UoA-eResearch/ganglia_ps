@@ -1,5 +1,6 @@
 import os
 import commands
+from operator import itemgetter
 
 max_processes = 60
 
@@ -27,16 +28,20 @@ def get_user_mapping():
   return mapping
     
 def create_process_list():
-  processes = []
-  stdout = commands.getoutput('ps axo pid,uid,pcpu,pmem,vsize,cmd')
+  global max_processes
+  processes = [{} for n in range(max_processes)]
+  stdout = commands.getoutput('ps axo pid,uid,pcpu,pmem,vsize,cmd --sort=-pcpu,-pmem')
   ps_lines = stdout.splitlines()
   userid_blacklist = get_user_blacklist()
   user_mapping = get_user_mapping()
+  pids = []
+  count = 0
   for ps in ps_lines[1:]:
     ps_fields = ps.split()
     if ('<defunct>' not in ps) and (ps_fields[1] not in userid_blacklist):
       p = {}
       p['pid'] = ps_fields[0]
+      pids.append(p['pid'])
       p['user'] = user_mapping[ps_fields[1]]
       p['pcpu'] = ps_fields[2]
       p['pmem'] = ps_fields[3]
@@ -45,21 +50,36 @@ def create_process_list():
       p['vsizepeak'] = commands.getoutput('cat /proc/%s/status | tr \\\\0 \\\\n | grep VmPeak | grep -oE "[[:digit:]]{1,}"' % ps_fields[0])
       if 'No such file or' in p['vsizepeak']:
         p['vsizepeak'] = 0
-      processes.append(p)
-  return processes 
+      processes[count] = p
+      count += 1
+      if count >= (max_processes-1):
+        break
 
+  tmp = {}
+  stdout = commands.getoutput('top -b -n 1')
+  top_lines = stdout.splitlines()[7:]
+  for line in top_lines:
+    top_fields = line.split()
+    pid = top_fields[0]
+    cpu = top_fields[8]
+    if pid in pids:
+      tmp[pid] = cpu
+
+  for ps in processes:
+    if 'pid' in ps and ps['pid'] in tmp:
+      ps['cpu'] = tmp[ps['pid']]
+
+  return processes
+    
 def ps_handler(name):
   global max_processes
-  processes = sorted(create_process_list(),key=lambda k: float(k['pcpu']), reverse=True)
-  for i in range(len(processes),(max_processes)):
-    processes.append({})
+  processes = create_process_list()
   i = 0
   for p in processes:
-    if i >= max_processes:
-      break;
     value = ''
     if p:
-      value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
+      #value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
+      value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['cpu'], p['pmem'],p['vsize'], p['vsizepeak'])
       value = value.strip().strip(',')
     cmd = 'gmetric '
     cmd += '--name="ps-%d" ' % i 
@@ -95,11 +115,9 @@ def metric_cleanup():
  
 # This code is for debugging and unit testing
 if __name__ == '__main__':
-  processes = sorted(create_process_list(),key=lambda k: float(k['pcpu']),reverse=True)
-  print processes
+  print create_process_list()
   #metric_init(None)
   #for d in descriptors:
   #  v = d['call_back'](d['name'])
   #  print 'value for %s is %s' % (d['name'], v)
-
 
