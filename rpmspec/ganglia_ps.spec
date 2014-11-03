@@ -1,6 +1,6 @@
 Summary: User process module for Ganglia
 Name: ganglia_ps
-Version: 0.0.21
+Version: 0.0.22
 Release: 0
 License: GPL
 Group: System/monitoring
