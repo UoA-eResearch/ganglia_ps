@@ -77,8 +77,7 @@ def ps_handler(name):
   i = 0
   for p in processes:
     value = ''
-    if p:
-      #value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['pcpu'], p['pmem'],p['vsize'], p['vsizepeak'])
+    if p and 'cpu' in p:
       value += '%s|%s|%s|%s|%s|%s|%s,' % (p['pid'], p['cmd'], p['user'], p['cpu'], p['pmem'],p['vsize'], p['vsizepeak'])
       value = value.strip().strip(',')
     cmd = 'gmetric '
